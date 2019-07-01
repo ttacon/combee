@@ -193,4 +193,7 @@ const combee = new Combee({
   queues: queueNames,
 });
 
-repl.start('combee::> ').context.combee = combee;
+repl.start({
+  prompt: 'combee::> ',
+  ignoreUndefined: true,
+}).context.combee = combee;
