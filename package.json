@@ -1,0 +1,29 @@
+{
+  "name": "combee",
+  "version": "0.0.0",
+  "description": "Shell for bee-queue",
+  "main": "repl.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ttacon/combee.git"
+  },
+  "bin": "./repl.js",
+  "keywords": [
+    "bee-queue"
+  ],
+  "author": "Trey Tacon <ttacon@gmail.com> (https://mixmax.com)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ttacon/combee/issues"
+  },
+  "homepage": "https://github.com/ttacon/combee#readme",
+  "dependencies": {
+    "bee-queue": "^1.2.2",
+    "redis": "^2.8.0",
+    "sift": "^8.5.0",
+    "yargs": "^13.2.4"
+  }
+}
