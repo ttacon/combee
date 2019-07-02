@@ -1,6 +1,6 @@
 {
   "name": "combee",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Shell for bee-queue",
   "main": "repl.js",
   "scripts": {
