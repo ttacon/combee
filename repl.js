@@ -6,6 +6,7 @@ const Bee = require('bee-queue');
 const redis = require('redis');
 const repl = require('repl');
 const sift = require('sift').default;
+const getValue = require('get-value');
 
 
 /**
@@ -179,6 +180,76 @@ class CombeeQueue {
     console.log(`removed ${numRemoved} jobs`);
 
     repl.repl.prompt();
+  }
+
+  /**
+   * Utility function for finding jobs that match the given criteria
+   * (the job type and filter).
+   *
+   * @param {string} jobType The type of job to search.
+   * @param {Object} filter A sift-compatible filter.
+   */
+  async find(jobType, filter) {
+    const matches = this._find(jobType, filter);
+    console.log(matches);
+    repl.repl.prompt();
+  }
+
+  count(jobType, filter) {
+    this.countAsync(jobType, filter);
+  }
+
+  async countAsync(jobType, filter) {
+    const matches = await this._find(jobType, filter);
+    console.log(`found ${matches.length} jobs`);
+    repl.repl.prompt();
+  }
+
+  distinct(jobType, field, filter) {
+    this.distinctAsync(jobType, field, filter);
+  }
+
+  async distinctAsync(jobType, field, filter) {
+    const matches = await this._find(jobType, filter);
+
+    const vals = new Map();
+
+    for (const match of matches) {
+      const val = getValue(match, field);
+      vals.set(val, (vals.get(val) || 0) + 1)
+    }
+
+    console.log(); // purge to next line for readability
+
+    for (const [ key, count ] of vals) {
+      console.log(`${key}: ${count}`);
+    }
+
+    repl.repl.prompt();
+  }
+
+
+  async _find(jobType, filter) {
+    const BATCH_SIZE = 50;
+    const jobStats = await this.queue.checkHealth();
+    const count = jobStats[jobType];
+    const sifted = sift(filter);
+
+    let matches = [];
+
+    for (let i=0; i < count; i+=BATCH_SIZE) {
+      const jobs = await this.queue.getJobs(jobType, {
+        size: BATCH_SIZE,
+        start: i,
+      });
+
+      const matched = jobs.filter(sifted);
+      if (matched && matched.length) {
+        matches = matches.concat(matched);
+      }
+    }
+
+    return matches.map(this.stripDownJob);
   }
 }
 
