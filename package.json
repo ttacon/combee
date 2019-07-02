@@ -22,6 +22,7 @@
   "homepage": "https://github.com/ttacon/combee#readme",
   "dependencies": {
     "bee-queue": "^1.2.2",
+    "get-value": "^3.0.1",
     "redis": "^2.8.0",
     "sift": "^8.5.0",
     "yargs": "^13.2.4"

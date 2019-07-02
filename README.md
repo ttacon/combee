@@ -63,5 +63,9 @@ combee::> [ { id: '7',
     options: { timestamp: 1561948417944, stacktraces: [] },
     status: 'created' } ]
 
-combee::> 
+combee::> combee.foo.find('waiting', {'data.yolo': 'yolo'})
+
+combee::> combee.foo.count('waiting', {'data.yolo': 'yolo'})
+
+combee::> combee.foo.distinct('waiting', 'data.yolo', {})
 ```
