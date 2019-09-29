@@ -83,7 +83,7 @@ class CombeeQueue {
   /**
    * Strip down job to loggable properties.
    *
-   * @param {BeeQueue} job The bee-queue job to inspect.
+   * @param {BeeQueue.Job} job The bee-queue job to inspect.
    * @returns {Object} Stripped down job object.
    */
   stripDownJob(job) {
@@ -106,34 +106,40 @@ class CombeeQueue {
   }
 
   /**
-   * Lists all the jobs for the given job type in the given page.
+   * Returns all the jobs for the given job type in the given page, and prints them
+   * in a console-friendly way.
    *
    * @param {string} jobType The type of job (i.e. 'active', 'waiting', etc).
    * @param {Object} page The page info.
    *   @property {number} start The start of the page.
    *   @property {number} end The end of the page.
    *   @property {number} size The size of the page.
+   * @returns {Promise<BeeQueue.Job[]>} A promise resolving to an array of matching jobs
    */
   list(jobType = 'active', page = { size: 100 }) {
-    this.queue.getJobs(jobType, page)
+    return this.queue.getJobs(jobType, page)
       .then((res) => {
+        let out = res;
         if (res && res.length) {
-          res = res.map(this.stripDownJob)
+          out = res.map((job) => this.stripDownJob(job))
         }
-        console.log(res);
+        console.log(out);
         repl.repl.prompt();
+        return res;
       });
   }
 
   /**
-   * Creates the given job.
+   * Creates a job from the given data.
    *
    * @param {Object} data The data for the job to create.
+   * @return {Promise<Job>} A promise resolving to the created job
    */
   createJob(data) {
-    this.queue.createJob(data).save().then((job) => {
+    return this.queue.createJob(data).save().then((job) => {
       console.log(this.stripDownJob(job));
       repl.repl.prompt();
+      return job;
     });
   }
 
@@ -190,25 +196,43 @@ class CombeeQueue {
    * @param {Object} filter A sift-compatible filter.
    */
   async find(jobType, filter) {
-    const matches = this._find(jobType, filter);
-    console.log(matches);
+    const matches = await this._find(jobType, filter);
+    console.log(matches.map((job) => this.stripDownJob(job)));
     repl.repl.prompt();
+    return matches;
   }
 
   count(jobType, filter) {
-    this.countAsync(jobType, filter);
+    return this.countAsync(jobType, filter);
   }
 
+  /**
+   * Counts the number of jobs matching the given type and filter.
+   *
+   * @param {string} jobType The type of job to search.
+   * @param {Object} filter A sift-compatible filter.
+   * @return {Promise<number>}
+   */
   async countAsync(jobType, filter) {
     const matches = await this._find(jobType, filter);
     console.log(`found ${matches.length} jobs`);
     repl.repl.prompt();
+    return matches.length;
   }
 
   distinct(jobType, field, filter) {
-    this.distinctAsync(jobType, field, filter);
+    return this.distinctAsync(jobType, field, filter);
   }
 
+  /**
+   * Prints the distinct values of `field` and their counts across all jobs matching
+   * the given type and filter. Returns an array of all distinct values.
+   *
+   * @param {string} jobType The type of job to search.
+   * @param {string} field   The job field to find the distinct values of
+   * @param {Object} filter  A sift-compatible filter.
+   * @return {Promise<*[]>}  An array containing the distinct values of `field` in the matching jobs
+   */
   async distinctAsync(jobType, field, filter) {
     const matches = await this._find(jobType, filter);
 
@@ -226,6 +250,7 @@ class CombeeQueue {
     }
 
     repl.repl.prompt();
+    return [...vals.keys()];
   }
 
 
@@ -249,7 +274,7 @@ class CombeeQueue {
       }
     }
 
-    return matches.map(this.stripDownJob);
+    return matches;
   }
 }
 
