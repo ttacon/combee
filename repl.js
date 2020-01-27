@@ -8,25 +8,26 @@ const repl = require('repl');
 const sift = require('sift').default;
 const getValue = require('get-value');
 
-
 /**
  * Creates a (honey)combee to allow introspection of bee-queue jobs.
  */
 class Combee {
-
   /**
    * Creates a new Combee.
    *
    * @param {string} redisUrl The connection URI for the redis deployment.
    * @param {[]string} queues The queues to inspect.
+   * @param {string?} queuePrefix The queue prefix (for queue auto-detection).
    */
   constructor(config) {
     assert(config.redisUrl, 'must provide redis URL');
-    assert(config.queues, 'must provide queues');
+    assert(config.queues || config.queuePrefix, 'must provide queues');
 
     this.redis = redis.createClient(config.redisUrl);
-    this.redis.on('error', function(err) { console.log(err); });
-    this.createQueues(config.queues)
+    this.redis.on('error', function(err) {
+      console.log(err);
+    });
+    this.createQueues(config.queues, config.queuePrefix);
   }
 
   /**
@@ -35,7 +36,19 @@ class Combee {
    *
    * @param {[]string} queues The names of the queues to care about.
    */
-  createQueues(queues) {
+  createQueues(queues, prefix) {
+    if (prefix && !queues) {
+      this.redis.keys(`${prefix}:*:id`, (err, found) => {
+        this._setQueues(
+          found.map((key) => new RegExp(`${prefix}:(.*):id`).exec(key)[1])
+        );
+      });
+    } else {
+      this._setQueues(queues);
+    }
+  }
+
+  _setQueues(queues) {
     this._queues = new Map();
     for (const queue of queues) {
       const bq = new Bee(queue, {
@@ -44,7 +57,7 @@ class Combee {
         sendEvents: false,
         storeJobs: false,
         redis: this.redis,
-        prefix: 'bq'
+        prefix: 'bq',
       });
 
       this._queues.set(queue, bq);
@@ -59,7 +72,7 @@ class Combee {
    */
   listQueues() {
     const info = [];
-    for (const [ name, queue ] of this._queues) {
+    for (const [name, queue] of this._queues) {
       info.push({ name });
     }
     return info;
@@ -70,7 +83,6 @@ class Combee {
  * Creates a CombeeQueue to provide individual introspection of a queue.
  */
 class CombeeQueue {
-
   /**
    * Constructs the CombeeQueue for the given BeeQueue.
    *
@@ -116,17 +128,16 @@ class CombeeQueue {
    *   @property {number} size The size of the page.
    * @returns {Promise<BeeQueue.Job[]>} A promise resolving to an array of matching jobs
    */
-  list(jobType = 'active', page = { size: 100 }) {
-    return this.queue.getJobs(jobType, page)
-      .then((res) => {
-        let out = res;
-        if (res && res.length) {
-          out = res.map((job) => this.stripDownJob(job))
-        }
-        console.log(out);
-        repl.repl.prompt();
-        return res;
-      });
+  list(jobType = 'active', page = { size: 100, start: 0, end: 99 }) {
+    return this.queue.getJobs(jobType, page).then((res) => {
+      let out = res;
+      if (res && res.length) {
+        out = res.map((job) => this.stripDownJob(job));
+      }
+      console.log(out);
+      repl.repl.prompt();
+      return res;
+    });
   }
 
   /**
@@ -136,11 +147,14 @@ class CombeeQueue {
    * @return {Promise<Job>} A promise resolving to the created job
    */
   createJob(data) {
-    return this.queue.createJob(data).save().then((job) => {
-      console.log(this.stripDownJob(job));
-      repl.repl.prompt();
-      return job;
-    });
+    return this.queue
+      .createJob(data)
+      .save()
+      .then((job) => {
+        console.log(this.stripDownJob(job));
+        repl.repl.prompt();
+        return job;
+      });
   }
 
   /**
@@ -168,10 +182,11 @@ class CombeeQueue {
 
     let numRemoved = 0;
 
-    for (let i=0; i < count; i+=BATCH_SIZE) {
+    for (let i = 0; i < count; i += BATCH_SIZE) {
       const jobs = await this.queue.getJobs(jobType, {
         size: BATCH_SIZE,
         start: i,
+        end: i + BATCH_SIZE - 1,
       });
 
       const matched = jobs.filter(sifted);
@@ -195,14 +210,14 @@ class CombeeQueue {
    * @param {string} jobType The type of job to search.
    * @param {Object} filter A sift-compatible filter.
    */
-  async find(jobType, filter) {
+  async find(jobType, filter = {}) {
     const matches = await this._find(jobType, filter);
     console.log(matches.map((job) => this.stripDownJob(job)));
     repl.repl.prompt();
     return matches;
   }
 
-  count(jobType, filter) {
+  count(jobType, filter = {}) {
     return this.countAsync(jobType, filter);
   }
 
@@ -213,7 +228,7 @@ class CombeeQueue {
    * @param {Object} filter A sift-compatible filter.
    * @return {Promise<number>}
    */
-  async countAsync(jobType, filter) {
+  async countAsync(jobType, filter = {}) {
     const matches = await this._find(jobType, filter);
     console.log(`found ${matches.length} jobs`);
     repl.repl.prompt();
@@ -240,19 +255,18 @@ class CombeeQueue {
 
     for (const match of matches) {
       const val = getValue(match, field);
-      vals.set(val, (vals.get(val) || 0) + 1)
+      vals.set(val, (vals.get(val) || 0) + 1);
     }
 
     console.log(); // purge to next line for readability
 
-    for (const [ key, count ] of vals) {
+    for (const [key, count] of vals) {
       console.log(`${key}: ${count}`);
     }
 
     repl.repl.prompt();
     return [...vals.keys()];
   }
-
 
   async _find(jobType, filter) {
     const BATCH_SIZE = 50;
@@ -262,10 +276,11 @@ class CombeeQueue {
 
     let matches = [];
 
-    for (let i=0; i < count; i+=BATCH_SIZE) {
+    for (let i = 0; i < count; i += BATCH_SIZE) {
       const jobs = await this.queue.getJobs(jobType, {
         size: BATCH_SIZE,
         start: i,
+        end: i + BATCH_SIZE - 1,
       });
 
       const matched = jobs.filter(sifted);
@@ -278,7 +293,6 @@ class CombeeQueue {
   }
 }
 
-
 let queueNames = argv.queues;
 if (typeof queueNames === 'string') {
   queueNames = queueNames.split(',');
@@ -287,6 +301,7 @@ if (typeof queueNames === 'string') {
 const combee = new Combee({
   redisUrl: argv.redis,
   queues: queueNames,
+  queuePrefix: argv.queuePrefix,
 });
 
 repl.start({
