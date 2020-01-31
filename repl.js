@@ -23,7 +23,17 @@ class Combee {
     assert(config.redisUrl, 'must provide redis URL');
     assert(config.queues || config.queuePrefix, 'must provide queues');
 
-    this.redis = redis.createClient(config.redisUrl);
+    let redisConnection = config.redisUrl;
+    if (config.redisUrl.startsWith('rediss:')) {
+      // A rediss:// URL means in-transit encryption is enabled for the redis host, so use TLS.
+      redisConnection = {
+        url: redisConnection.replace('rediss:', 'redis:'),
+        tls: {},
+      };
+    };
+
+    this.redis = redis.createClient(redisConnection);
+
     this.redis.on('error', function(err) {
       console.log(err);
     });
