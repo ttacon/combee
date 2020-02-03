@@ -170,8 +170,8 @@ class CombeeQueue {
   /**
    * Removes jobs of the given type that match the given filter.
    *
-   * @param {string} jobType The type of job to remove matches from.
-   * @param {Object} filter A sift-compatible filter.
+   * @param {string}            jobType The type of job to remove matches from.
+   * @param {function | Object} filter  A function, or a sift-compatible filter
    */
   removeJobs(jobType, filter) {
     this.removeJobsAsync(jobType, filter);
@@ -181,14 +181,14 @@ class CombeeQueue {
    * Utility function for removing jobs that match the given criteria
    * (the job type and filter).
    *
-   * @param {string} jobType The type of job to remove matches from.
-   * @param {Object} filter A sift-compatible filter.
+   * @param {string}            jobType The type of job to remove matches from.
+   * @param {function | Object} filter  A function, or a sift-compatible filter
    */
   async removeJobsAsync(jobType, filter) {
     const BATCH_SIZE = 50;
     const jobStats = await this.queue.checkHealth();
     const count = jobStats[jobType];
-    const sifted = sift(filter);
+    const filterFn = typeof filter === 'function' ? filter : sift(filter);
 
     let numRemoved = 0;
 
@@ -199,7 +199,7 @@ class CombeeQueue {
         end: i + BATCH_SIZE - 1,
       });
 
-      const matched = jobs.filter(sifted);
+      const matched = jobs.filter(filterFn);
       if (!matched || !matched.length) {
         continue;
       }
@@ -217,8 +217,8 @@ class CombeeQueue {
    * Utility function for finding jobs that match the given criteria
    * (the job type and filter).
    *
-   * @param {string} jobType The type of job to search.
-   * @param {Object} filter A sift-compatible filter.
+   * @param {string}            jobType The type of job to search.
+   * @param {function | Object} filter  A function, or a sift-compatible filter
    */
   async find(jobType, filter = {}) {
     const matches = await this._find(jobType, filter);
@@ -234,8 +234,8 @@ class CombeeQueue {
   /**
    * Counts the number of jobs matching the given type and filter.
    *
-   * @param {string} jobType The type of job to search.
-   * @param {Object} filter A sift-compatible filter.
+   * @param {string}            jobType The type of job to search.
+   * @param {function | Object} filter  A function, or a sift-compatible filter
    * @return {Promise<number>}
    */
   async countAsync(jobType, filter = {}) {
@@ -253,9 +253,9 @@ class CombeeQueue {
    * Prints the distinct values of `field` and their counts across all jobs matching
    * the given type and filter. Returns an array of all distinct values.
    *
-   * @param {string} jobType The type of job to search.
-   * @param {string} field   The job field to find the distinct values of
-   * @param {Object} filter  A sift-compatible filter.
+   * @param {string}            jobType The type of job to search.
+   * @param {string}            field   The job field to find the distinct values of
+   * @param {function | Object} filter  A function, or a sift-compatible filter
    * @return {Promise<*[]>}  An array containing the distinct values of `field` in the matching jobs
    */
   async distinctAsync(jobType, field, filter) {
@@ -282,7 +282,7 @@ class CombeeQueue {
     const BATCH_SIZE = 50;
     const jobStats = await this.queue.checkHealth();
     const count = jobStats[jobType];
-    const sifted = sift(filter);
+    const filterFn = typeof filter === 'function' ? filter : sift(filter);
 
     let matches = [];
 
@@ -293,7 +293,7 @@ class CombeeQueue {
         end: i + BATCH_SIZE - 1,
       });
 
-      const matched = jobs.filter(sifted);
+      const matched = jobs.filter(filterFn);
       if (matched && matched.length) {
         matches = matches.concat(matched);
       }
