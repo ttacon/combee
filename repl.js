@@ -7,6 +7,9 @@ const redis = require('redis');
 const repl = require('repl');
 const sift = require('sift').default;
 const getValue = require('get-value');
+const waitOn = require('promise-callbacks').waitOn;
+
+const utils = require('./utils');
 
 /**
  * Creates a (honey)combee to allow introspection of bee-queue jobs.
@@ -300,6 +303,30 @@ class CombeeQueue {
     }
 
     return matches;
+  }
+
+  /**
+   * Dump jobs, based on a filter, to a file.
+   *
+   * @param      {String}   jobType      The type of job (i.e. 'active', 'waiting', etc).
+   * @param      {Object}   [filter={}]  The sift-compatible filter
+   */
+  async dump(jobType, filter = {}) {
+    const matches = await this._find(jobType, filter);
+    const cleanedMatches = matches.map((job) => this.stripDownJob(job));
+
+    const formattedDate = utils.getSanitizedDateString();
+    const filename = `${this.queue.name}_${jobType}_dump_${formattedDate}.json`;
+
+    const jsonWriteStream = utils.setupJSONWriteStream(filename, cleanedMatches);
+
+    try {
+      await waitOn(jsonWriteStream, 'finish', { waitError: true });
+      console.log(`Dumped ${cleanedMatches.length} jobs to ${filename}`);
+    } catch (err) {
+      console.error('Failed to write to fail', err);
+    }
+    repl.repl.prompt();
   }
 }
 
