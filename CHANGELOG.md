@@ -1,5 +1,6 @@
 CHANGELOG
 =========
+* 1.6.0 feat(foreach): add async generator based forEach function per job type - thanks @shils!
 * 1.5.0 Support passing custom filter functions #13 - thanks @shils!
 * 1.4.0 Support encryption in transit redis URIs #10 - thanks @logandavis!
 * 1.3.0 Queue prefix auto-create.
