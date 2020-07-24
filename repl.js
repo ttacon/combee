@@ -7,6 +7,36 @@ const redis = require('redis');
 const repl = require('repl');
 const sift = require('sift').default;
 const getValue = require('get-value');
+const { decorateIt } = require('./iterUtils');
+
+/**
+ * @typedef {'waiting' | 'active' | 'succeeded' | 'failed' | 'delayed'} JobType
+ */
+
+/**
+ * Returns an async iterator over jobs in the given queue, of the given type.
+ *
+ * @param {BeeQueue} queue
+ * @param {JobType}  jobType
+ * @returns {AsyncIterator<BeeQueue.Job>}
+ */
+async function *iterate(queue, jobType) {
+  const BATCH_SIZE = 50;
+  const jobStats = await queue.checkHealth();
+  const count = jobStats[jobType];
+
+  for (let i = 0; i < count; i += BATCH_SIZE) {
+    const jobs = await queue.getJobs(jobType, {
+      size: BATCH_SIZE,
+      start: i,
+      end: i + BATCH_SIZE - 1,
+    });
+
+    for (const job of jobs) {
+      yield job;
+    }
+  }
+}
 
 /**
  * Creates a (honey)combee to allow introspection of bee-queue jobs.
@@ -131,8 +161,8 @@ class CombeeQueue {
    * Returns all the jobs for the given job type in the given page, and prints them
    * in a console-friendly way.
    *
-   * @param {string} jobType The type of job (i.e. 'active', 'waiting', etc).
-   * @param {Object} page The page info.
+   * @param {JobType} jobType The type of job (i.e. 'active', 'waiting', etc).
+   * @param {Object}  page    The page info.
    *   @property {number} start The start of the page.
    *   @property {number} end The end of the page.
    *   @property {number} size The size of the page.
@@ -170,7 +200,7 @@ class CombeeQueue {
   /**
    * Removes jobs of the given type that match the given filter.
    *
-   * @param {string}            jobType The type of job to remove matches from.
+   * @param {JobType}           jobType The type of job to remove matches from.
    * @param {function | Object} filter  A function, or a sift-compatible filter
    */
   removeJobs(jobType, filter) {
@@ -181,31 +211,19 @@ class CombeeQueue {
    * Utility function for removing jobs that match the given criteria
    * (the job type and filter).
    *
-   * @param {string}            jobType The type of job to remove matches from.
+   * @param {JobType}           jobType The type of job to remove matches from.
    * @param {function | Object} filter  A function, or a sift-compatible filter
    */
   async removeJobsAsync(jobType, filter) {
-    const BATCH_SIZE = 50;
-    const jobStats = await this.queue.checkHealth();
-    const count = jobStats[jobType];
     const filterFn = typeof filter === 'function' ? filter : sift(filter);
 
     let numRemoved = 0;
 
-    for (let i = 0; i < count; i += BATCH_SIZE) {
-      const jobs = await this.queue.getJobs(jobType, {
-        size: BATCH_SIZE,
-        start: i,
-        end: i + BATCH_SIZE - 1,
-      });
-
-      const matched = jobs.filter(filterFn);
-      if (!matched || !matched.length) {
-        continue;
+    for await (const job of this.iterate(jobType)) {
+      if (filterFn(job)) {
+        await job.remove();
+        numRemoved++;
       }
-
-      await Promise.all(matched.map((job) => job.remove()));
-      numRemoved += matched.length;
     }
 
     console.log(`removed ${numRemoved} jobs`);
@@ -217,7 +235,7 @@ class CombeeQueue {
    * Utility function for finding jobs that match the given criteria
    * (the job type and filter).
    *
-   * @param {string}            jobType The type of job to search.
+   * @param {JobType}           jobType The type of job to search.
    * @param {function | Object} filter  A function, or a sift-compatible filter
    */
   async find(jobType, filter = {}) {
@@ -234,7 +252,7 @@ class CombeeQueue {
   /**
    * Counts the number of jobs matching the given type and filter.
    *
-   * @param {string}            jobType The type of job to search.
+   * @param {JobType}           jobType The type of job to search.
    * @param {function | Object} filter  A function, or a sift-compatible filter
    * @return {Promise<number>}
    */
@@ -253,19 +271,20 @@ class CombeeQueue {
    * Prints the distinct values of `field` and their counts across all jobs matching
    * the given type and filter. Returns an array of all distinct values.
    *
-   * @param {string}            jobType The type of job to search.
+   * @param {JobType}           jobType The type of job to search.
    * @param {string}            field   The job field to find the distinct values of
    * @param {function | Object} filter  A function, or a sift-compatible filter
    * @return {Promise<*[]>}  An array containing the distinct values of `field` in the matching jobs
    */
   async distinctAsync(jobType, field, filter) {
-    const matches = await this._find(jobType, filter);
-
+    const filterFn = typeof filter === 'function' ? filter : sift(filter);
     const vals = new Map();
 
-    for (const match of matches) {
-      const val = getValue(match, field);
-      vals.set(val, (vals.get(val) || 0) + 1);
+    for await (const job of this.iterate(jobType)) {
+      if (filterFn(job)) {
+        const val = getValue(job, field);
+        vals.set(val, (vals.get(val) || 0) + 1);
+      }
     }
 
     console.log(); // purge to next line for readability
@@ -279,27 +298,24 @@ class CombeeQueue {
   }
 
   async _find(jobType, filter) {
-    const BATCH_SIZE = 50;
-    const jobStats = await this.queue.checkHealth();
-    const count = jobStats[jobType];
     const filterFn = typeof filter === 'function' ? filter : sift(filter);
+    const matches = [];
 
-    let matches = [];
-
-    for (let i = 0; i < count; i += BATCH_SIZE) {
-      const jobs = await this.queue.getJobs(jobType, {
-        size: BATCH_SIZE,
-        start: i,
-        end: i + BATCH_SIZE - 1,
-      });
-
-      const matched = jobs.filter(filterFn);
-      if (matched && matched.length) {
-        matches = matches.concat(matched);
+    for await (const job of this.iterate(jobType)) {
+      if (filterFn(job)) {
+        matches.push(job);
       }
     }
 
     return matches;
+  }
+
+  /**
+   * @param {JobType} jobType
+   * @returns {DecoratedIterable<BeeQueue.Job>}
+   */
+  iterate(jobType) {
+    return decorateIt(iterate(this.queue, jobType));
   }
 }
 
