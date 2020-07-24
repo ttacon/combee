@@ -69,3 +69,17 @@ combee::> combee.foo.count('waiting', {'data.yolo': 'yolo'})
 
 combee::> combee.foo.distinct('waiting', 'data.yolo', {})
 ```
+
+### Streaming operations
+
+Not streaming in the Node.js `stream` sense, but a fluent `AsyncIterable/Iterator` based API. 
+
+```
+combee::> for (let i = 0; i < 10; i++) { combee.foo.createJob({ x: i, y: 2 * i }) }
+
+// remove all waiting jobs where data.x + data.y < 10, log when done
+combee::> combee.foo.iterate('waiting').filter((job) => job.data.x + job.data.y < 10).forEach((job) => job.remove()).then(() => console.log('done'))
+
+// collect all waiting jobs where data.x is even in an array
+combee::> let evenX; combee.foo.iterate('waiting').filter((job) => job.data.x % 2 === 0).toArray().then((res) => evenX = res)
+```
