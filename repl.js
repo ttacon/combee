@@ -7,10 +7,36 @@ const redis = require('redis');
 const repl = require('repl');
 const sift = require('sift').default;
 const getValue = require('get-value');
+const { decorateIt } = require('./iterUtils');
 
 /**
  * @typedef {'waiting' | 'active' | 'succeeded' | 'failed' | 'delayed'} JobType
  */
+
+/**
+ * Returns an async iterator over jobs in the given queue, of the given type.
+ *
+ * @param {BeeQueue} queue
+ * @param {JobType}  jobType
+ * @returns {AsyncIterator<BeeQueue.Job>}
+ */
+async function *iterate(queue, jobType) {
+  const BATCH_SIZE = 50;
+  const jobStats = await queue.checkHealth();
+  const count = jobStats[jobType];
+
+  for (let i = 0; i < count; i += BATCH_SIZE) {
+    const jobs = await queue.getJobs(jobType, {
+      size: BATCH_SIZE,
+      start: i,
+      end: i + BATCH_SIZE - 1,
+    });
+
+    for (const job of jobs) {
+      yield job;
+    }
+  }
+}
 
 /**
  * Creates a (honey)combee to allow introspection of bee-queue jobs.
@@ -286,35 +312,10 @@ class CombeeQueue {
 
   /**
    * @param {JobType} jobType
-   * @returns {AsyncGenerator<BeeQueue.Job>}
+   * @returns {DecoratedIterable<BeeQueue.Job>}
    */
-  async* iterate(jobType) {
-    const BATCH_SIZE = 50;
-    const jobStats = await this.queue.checkHealth();
-    const count = jobStats[jobType];
-
-    for (let i = 0; i < count; i += BATCH_SIZE) {
-      const jobs = await this.queue.getJobs(jobType, {
-        size: BATCH_SIZE,
-        start: i,
-        end: i + BATCH_SIZE - 1,
-      });
-
-      for (const job of jobs) {
-        yield job;
-      }
-    }
-  }
-
-  /**
-   * @param {JobType} jobType
-   * @param {function(BeeQueue.Job)} fn The function to execute on each job of the given type
-   * @returns {Promise<void>}
-   */
-  async forEach(jobType, fn) {
-    for await (const job of this.iterate(jobType)) {
-      await fn(job);
-    }
+  iterate(jobType) {
+    return decorateIt(iterate(this.queue, jobType));
   }
 }
 
