@@ -1,13 +1,28 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const argv = require('yargs').argv;
 const Bee = require('bee-queue');
 const redis = require('redis');
 const repl = require('repl');
 const sift = require('sift').default;
 const getValue = require('get-value');
 const { decorateIt } = require('./iterUtils');
+
+const argv = require('yargs')
+      .options({
+          redis: {
+              describe: 'Redis deployment to connect to',
+              demandOption: true,
+          },
+          queues: {
+              describe: 'BeeQueue queues to connect to',
+              demandOption: true,
+          },
+          loadFunctions: {
+              type: 'string',
+              describe: "Optional extra functions to load into the REPL's context",
+          }
+      }).argv;
 
 /**
  * @typedef {'waiting' | 'active' | 'succeeded' | 'failed' | 'delayed'} JobType
@@ -330,7 +345,14 @@ const combee = new Combee({
   queuePrefix: argv.queuePrefix,
 });
 
-repl.start({
+const rpl = repl.start({
   prompt: 'combee::> ',
   ignoreUndefined: true,
-}).context.combee = combee;
+});
+
+rpl.context.combee = combee;
+
+if (!!argv.loadFunctions) {
+    require(argv.loadFunctions)(rpl.context);
+}
+

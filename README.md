@@ -70,7 +70,7 @@ combee::> combee.foo.count('waiting', {'data.yolo': 'yolo'})
 combee::> combee.foo.distinct('waiting', 'data.yolo', {})
 ```
 
-### Streaming operations
+## Streaming operations
 
 Not streaming in the Node.js `stream` sense, but a fluent `AsyncIterable/Iterator` based API. 
 
@@ -83,3 +83,20 @@ combee::> combee.foo.iterate('waiting').filter((job) => job.data.x + job.data.y 
 // collect all waiting jobs where data.x is even in an array
 combee::> let evenX; combee.foo.iterate('waiting').filter((job) => job.data.x % 2 === 0).toArray().then((res) => evenX = res)
 ```
+
+## Advanced usage
+
+### Loading optional functions into the REPL
+
+If you have utility functions or extra functions that you'd like to load, you
+can do so via the `--loadFunctions` parameter, which can be used as follows:
+
+```js
+node repl.js \
+    --redis=redis://localhost:6379 \
+    --loadFunctions=./examples/functionsToLoad.js \
+    --queues=bar,foo
+```
+
+The file passed to `--loadFunctions` must expose single a top level function
+which accepts the REPL context as the only parameter to it.
