@@ -1,3 +1,4 @@
+const assert = require('assert');
 const sift = require('sift').default;
 
 /**
@@ -11,6 +12,17 @@ async function *filterIt(filter, iter) {
   for await (const item of iter) {
     if (await filterFn(item)) {
       yield item;
+    }
+  }
+}
+
+async function *limitIt(limit, iter) {
+  let count = 0;
+  for await (const item of iter) {
+    yield item;
+
+    if (++count === limit) {
+      break
     }
   }
 }
@@ -60,6 +72,15 @@ class DecoratedIterable {
       result.push(item);
     }
     return result;
+  }
+
+  /**
+   * @param {number} limit
+   * @return {DecoratedIterable<T>}
+   */
+  limit(limit) {
+    assert(limit && typeof limit === 'number', '"limit" must be a positive integer');
+    return new DecoratedIterable(limitIt(limit, this));
   }
 }
 
