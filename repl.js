@@ -2,11 +2,15 @@
 
 const assert = require('assert');
 const Bee = require('bee-queue');
+const path = require('path');
 const redis = require('redis');
 const repl = require('repl');
+const { homedir } = require('os');
 const sift = require('sift').default;
 const getValue = require('get-value');
 const { decorateIt } = require('./iterUtils');
+
+const DEFAULT_HISTORY_PATH = path.join(homedir(), '.combee_history');
 
 const argv = require('yargs')
       .options({
@@ -348,6 +352,15 @@ const combee = new Combee({
 const rpl = repl.start({
   prompt: 'combee::> ',
   ignoreUndefined: true,
+});
+
+const historyPath = process.env.COMBEE_HISTORY || DEFAULT_HISTORY_PATH;
+rpl.setupHistory(historyPath, (err) => {
+  if (!err) {
+    return;
+  }
+  console.error('Could not setup history file at', historyPath);
+  console.error(err);
 });
 
 rpl.context.combee = combee;
